@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate Downloader</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .container {
+            text-align: center;
+            padding: 2.5rem;
+            border-radius: 12px;
+            background-color: white;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 400px;
+        }
+        /* Styles for the custom modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            max-width: 90%;
+            width: 380px;
+        }
+        .modal-content p {
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+            line-height: 1.6;
+        }
+        .modal-content button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 6px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.2s;
+        }
+        .modal-content button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="loadingContainer">
+        <h1 id="message">Processing your download...</h1>
+    </div>
+
+    <!-- Hidden modal for error messages -->
+    <div id="errorModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <p id="modalMessage"></p>
+            <button id="modalOkButton">OK</button>
+        </div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            const loadingContainer = document.getElementById('loadingContainer');
+            const errorModal = document.getElementById('errorModal');
+            const modalMessage = document.getElementById('modalMessage');
+            const modalOkButton = document.getElementById('modalOkButton');
+
+            // --- CONFIGURATION ---
+            const fileUrlTemplate = "https://firebasestorage.googleapis.com/v0/b/legacy-hose.firebasestorage.app/o/invoices%2F{TAG}?alt=media&token=ab4cd758-f4ec-4a77-bbdf-29706745019e";
+            const fallbackUrl = "https://legacycertificates.com/";
+
+            /**
+             * Shows the error modal with a specific message.
+             * @param {string} message - The error message to display.
+             */
+            function showErrorModal(message) {
+                loadingContainer.style.display = 'none'; // Hide the "Processing" message
+                modalMessage.textContent = message;
+                modalOkButton.onclick = () => { window.location.href = fallbackUrl; };
+                errorModal.style.display = 'flex'; // Show the modal
+            }
+            
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const tag = params.get('tag');
+
+                if (tag) {
+                    // If a tag is found, create the final URL and redirect.
+                    const finalUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
+                    console.log('Redirecting to:', finalUrl);
+                    window.location.replace(finalUrl);
+                } else {
+                    // If no tag is found, show the custom error modal.
+                    console.error("Error: Tag number is missing from the URL.");
+                    showErrorModal("No tag number found. Click Ok to proceed to the manual entry page.");
+                }
+
+            } catch (error) {
+                console.error("An unexpected error occurred during redirection.", error);
+                showErrorModal("An error occurred. You will be redirected to the main page.");
+            }
+        };
+    </script>
+</body>
+</html>
+
