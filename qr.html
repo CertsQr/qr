@@ -129,8 +129,10 @@
             const fallbackUrl = "https://legacycertificates.com/";
 
             function showErrorModal(message) {
+                // Ensure we don't show the modal if the preview is already visible
+                if (previewContainer.style.display === 'flex') return;
+                
                 loadingContainer.style.display = 'none';
-                previewContainer.style.display = 'none';
                 modalMessage.textContent = message;
                 modalOkButton.onclick = () => { window.location.href = fallbackUrl; };
                 errorModal.style.display = 'flex';
@@ -153,35 +155,33 @@
                         downloadButton.href = directUrl;
                         downloadButton.setAttribute('download', `Certificate-${tag}.pdf`);
                         
+                        // Set a timer that will assume an error if the PDF doesn't load in time.
+                        const fallbackTimer = setTimeout(() => {
+                            showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
+                        }, 5000); // 5-second timeout
+
                         const pdfObject = document.createElement('object');
                         pdfObject.setAttribute('data', directUrl);
                         pdfObject.setAttribute('type', 'application/pdf');
                         pdfObject.style.width = '100%';
                         pdfObject.style.height = '100%';
 
-                        // This event fires if the PDF is successfully found and starts loading.
+                        // If the PDF loads successfully, this event will fire.
                         pdfObject.onload = () => {
+                            // Cancel the error timer and show the preview.
+                            clearTimeout(fallbackTimer);
                             showPreview();
                         };
                         
-                        // This event fires if the resource (the PDF) cannot be loaded (e.g., 404).
-                        pdfObject.onerror = () => {
-                             showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
-                        };
-                        
-                        // Add a fallback message for browsers that don't support the object tag for PDFs.
                         const fallbackP = document.createElement('p');
                         fallbackP.textContent = 'Your browser does not support PDF previews. Please use the download button.';
                         pdfObject.appendChild(fallbackP);
                         
-                        // Clear any previous content and add the new object.
                         pdfObjectContainer.innerHTML = '';
                         pdfObjectContainer.appendChild(pdfObject);
 
                         printButton.onclick = () => {
                            try {
-                                // For <object>, printing is handled differently.
-                                // We create a temporary iframe to print from.
                                 const printFrame = document.createElement('iframe');
                                 printFrame.style.display = 'none';
                                 printFrame.src = directUrl;
@@ -189,7 +189,6 @@
                                 printFrame.onload = () => {
                                     printFrame.contentWindow.focus();
                                     printFrame.contentWindow.print();
-                                    // Clean up the temporary frame after a delay.
                                     setTimeout(() => { document.body.removeChild(printFrame); }, 1000);
                                 };
                             } catch (e) {
