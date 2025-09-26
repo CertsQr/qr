@@ -126,7 +126,6 @@
 
             const fileUrlTemplate = "https://firebasestorage.googleapis.com/v0/b/legacy-hose.firebasestorage.app/o/invoices%2F{TAG}?alt=media&token=ab4cd758-f4ec-4a77-bbdf-29706745019e";
             const fallbackUrl = "https://legacycertificates.com/";
-            const errorTimeout = 4000; // 4 seconds
 
             function showErrorModal(message) {
                 loadingContainer.style.display = 'none';
@@ -136,9 +135,10 @@
                 errorModal.style.display = 'flex';
             }
             
-            function showPreview() {
+            function showPreview(url) {
                 loadingContainer.style.display = 'none';
                 previewContainer.style.display = 'flex';
+                pdfPreview.src = url;
             }
 
             function handleRequest() {
@@ -149,16 +149,18 @@
                     if (tag) {
                         const directUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
                         
-                        // Set a timer that will trigger the error modal if the PDF doesn't load.
-                        const fallbackTimer = setTimeout(() => {
-                            console.error(`Timeout: Could not load PDF for tag '${tag}'.`);
+                        // Use a hidden image to reliably check if the file exists.
+                        const checker = new Image();
+                        
+                        // If the file exists, the image's 'onload' will fire.
+                        checker.onload = function() {
+                            showPreview(directUrl);
+                        };
+                        
+                        // If the file does not exist (404), the 'onerror' will fire.
+                        checker.onerror = function() {
+                            console.error(`File not found for tag '${tag}'.`);
                             showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
-                        }, errorTimeout);
-
-                        // If the iframe loads successfully, cancel the timer and show the preview.
-                        pdfPreview.onload = () => {
-                            clearTimeout(fallbackTimer);
-                            showPreview();
                         };
                         
                         certificateTitle.textContent = `Tag#: ${tag}`;
@@ -169,8 +171,8 @@
                             }
                         };
                         
-                        // Set the iframe source to the direct PDF link.
-                        pdfPreview.src = directUrl;
+                        // Start the check by setting the image source.
+                        checker.src = directUrl;
 
                     } else {
                         console.error("Error: Tag number is missing from the URL.");
