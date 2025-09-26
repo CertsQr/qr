@@ -14,7 +14,7 @@
             margin: 0;
             background-color: #f4f4f9;
             color: #333;
-            overflow: hidden; /* Prevent scrolling on the main page */
+            overflow: hidden;
         }
         .container {
             text-align: center;
@@ -26,7 +26,7 @@
             max-width: 400px;
         }
         #previewContainer {
-            display: none; /* Hidden by default */
+            display: none;
             flex-direction: column;
             width: 100%;
             height: 100%;
@@ -126,7 +126,6 @@
 
             const fileUrlTemplate = "https://firebasestorage.googleapis.com/v0/b/legacy-hose.firebasestorage.app/o/invoices%2F{TAG}?alt=media&token=ab4cd758-f4ec-4a77-bbdf-29706745019e";
             const fallbackUrl = "https://legacycertificates.com/";
-            const errorTimeout = 3500; // Increased timeout for slower connections
 
             function showErrorModal(message) {
                 loadingContainer.style.display = 'none';
@@ -136,38 +135,37 @@
                 errorModal.style.display = 'flex';
             }
             
-            function handleRedirect() {
+            function showPreview() {
+                loadingContainer.style.display = 'none';
+                previewContainer.style.display = 'flex';
+            }
+
+            function handleRequest() {
                 try {
                     const params = new URLSearchParams(window.location.search);
                     const tag = params.get('tag');
 
                     if (tag) {
-                        const finalUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
-                        let hasLoaded = false;
-
-                        const fallbackTimer = setTimeout(() => {
-                            if (!hasLoaded) {
-                                console.error(`Timeout: Could not load PDF for tag '${tag}'.`);
-                                showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
-                            }
-                        }, errorTimeout);
+                        // The direct URL for the download button
+                        const directUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
                         
-                        pdfPreview.onload = () => {
-                            hasLoaded = true;
-                            clearTimeout(fallbackTimer);
-                            loadingContainer.style.display = 'none';
-                            previewContainer.style.display = 'flex';
-                        };
+                        // **NEW:** The URL for the Google Docs viewer to embed in the iframe
+                        const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(directUrl)}&embedded=true`;
 
+                        // The iframe's onload event is now much more reliable
+                        pdfPreview.onload = showPreview;
+                        
                         certificateTitle.textContent = `Tag#: ${tag}`;
-                        downloadButton.href = finalUrl;
+                        downloadButton.href = directUrl; // Download button gets the direct link
                         printButton.onclick = () => {
+                            // This command prints the content of the iframe
                             if (pdfPreview.contentWindow) {
                                 pdfPreview.contentWindow.print();
                             }
                         };
                         
-                        pdfPreview.src = finalUrl;
+                        // Set the iframe source to the Google viewer
+                        pdfPreview.src = viewerUrl;
 
                     } else {
                         console.error("Error: Tag number is missing from the URL.");
@@ -179,7 +177,7 @@
                 }
             }
 
-            handleRedirect();
+            handleRequest();
         };
     </script>
 </body>
