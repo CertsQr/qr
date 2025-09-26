@@ -62,7 +62,8 @@
         .actions button:hover, .actions a:hover {
             background-color: #0056b3;
         }
-        #pdfPreview {
+        /* The container for the PDF object */
+        #pdfObjectContainer {
             width: 100%;
             height: 100%;
             border: none;
@@ -102,7 +103,7 @@
                 <a id="downloadButton" href="#" download>Download</a>
             </div>
         </header>
-        <iframe id="pdfPreview" title="Certificate Preview"></iframe>
+        <div id="pdfObjectContainer"></div>
     </div>
 
     <div id="errorModal" class="modal-overlay">
@@ -116,7 +117,7 @@
         window.onload = function() {
             const loadingContainer = document.getElementById('loadingContainer');
             const previewContainer = document.getElementById('previewContainer');
-            const pdfPreview = document.getElementById('pdfPreview');
+            const pdfObjectContainer = document.getElementById('pdfObjectContainer');
             const certificateTitle = document.getElementById('certificateTitle');
             const printButton = document.getElementById('printButton');
             const downloadButton = document.getElementById('downloadButton');
@@ -126,7 +127,6 @@
 
             const fileUrlTemplate = "https://firebasestorage.googleapis.com/v0/b/legacy-hose.firebasestorage.app/o/invoices%2F{TAG}?alt=media&token=ab4cd758-f4ec-4a77-bbdf-29706745019e";
             const fallbackUrl = "https://legacycertificates.com/";
-            const errorTimeout = 4000; 
 
             function showErrorModal(message) {
                 loadingContainer.style.display = 'none';
@@ -149,25 +149,54 @@
                     if (tag) {
                         const directUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
                         
-                        let fallbackTimer = setTimeout(() => {
-                            showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
-                        }, errorTimeout);
-
-                        pdfPreview.onload = () => {
-                            clearTimeout(fallbackTimer);
-                            showPreview();
-                        };
-                        
                         certificateTitle.textContent = `Tag#: ${tag}`;
                         downloadButton.href = directUrl;
                         downloadButton.setAttribute('download', `Certificate-${tag}.pdf`);
-                        printButton.onclick = () => {
-                            if (pdfPreview.contentWindow) {
-                                pdfPreview.contentWindow.print();
-                            }
+                        
+                        const pdfObject = document.createElement('object');
+                        pdfObject.setAttribute('data', directUrl);
+                        pdfObject.setAttribute('type', 'application/pdf');
+                        pdfObject.style.width = '100%';
+                        pdfObject.style.height = '100%';
+
+                        // This event fires if the PDF is successfully found and starts loading.
+                        pdfObject.onload = () => {
+                            showPreview();
                         };
                         
-                        pdfPreview.src = directUrl;
+                        // This event fires if the resource (the PDF) cannot be loaded (e.g., 404).
+                        pdfObject.onerror = () => {
+                             showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
+                        };
+                        
+                        // Add a fallback message for browsers that don't support the object tag for PDFs.
+                        const fallbackP = document.createElement('p');
+                        fallbackP.textContent = 'Your browser does not support PDF previews. Please use the download button.';
+                        pdfObject.appendChild(fallbackP);
+                        
+                        // Clear any previous content and add the new object.
+                        pdfObjectContainer.innerHTML = '';
+                        pdfObjectContainer.appendChild(pdfObject);
+
+                        printButton.onclick = () => {
+                           try {
+                                // For <object>, printing is handled differently.
+                                // We create a temporary iframe to print from.
+                                const printFrame = document.createElement('iframe');
+                                printFrame.style.display = 'none';
+                                printFrame.src = directUrl;
+                                document.body.appendChild(printFrame);
+                                printFrame.onload = () => {
+                                    printFrame.contentWindow.focus();
+                                    printFrame.contentWindow.print();
+                                    // Clean up the temporary frame after a delay.
+                                    setTimeout(() => { document.body.removeChild(printFrame); }, 1000);
+                                };
+                            } catch (e) {
+                                console.error("Printing failed:", e);
+                                alert("Could not open print dialog. Please try the download button.");
+                            }
+                        };
 
                     } else {
                         showErrorModal("The certificate link is invalid. You will be redirected to the main page.");
