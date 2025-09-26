@@ -126,6 +126,7 @@
 
             const fileUrlTemplate = "https://firebasestorage.googleapis.com/v0/b/legacy-hose.firebasestorage.app/o/invoices%2F{TAG}?alt=media&token=ab4cd758-f4ec-4a77-bbdf-29706745019e";
             const fallbackUrl = "https://legacycertificates.com/";
+            const errorTimeout = 4000; // 4 seconds
 
             function showErrorModal(message) {
                 loadingContainer.style.display = 'none';
@@ -146,26 +147,30 @@
                     const tag = params.get('tag');
 
                     if (tag) {
-                        // The direct URL for the download button
                         const directUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
                         
-                        // **NEW:** The URL for the Google Docs viewer to embed in the iframe
-                        const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(directUrl)}&embedded=true`;
+                        // Set a timer that will trigger the error modal if the PDF doesn't load.
+                        const fallbackTimer = setTimeout(() => {
+                            console.error(`Timeout: Could not load PDF for tag '${tag}'.`);
+                            showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
+                        }, errorTimeout);
 
-                        // The iframe's onload event is now much more reliable
-                        pdfPreview.onload = showPreview;
+                        // If the iframe loads successfully, cancel the timer and show the preview.
+                        pdfPreview.onload = () => {
+                            clearTimeout(fallbackTimer);
+                            showPreview();
+                        };
                         
                         certificateTitle.textContent = `Tag#: ${tag}`;
-                        downloadButton.href = directUrl; // Download button gets the direct link
+                        downloadButton.href = directUrl;
                         printButton.onclick = () => {
-                            // This command prints the content of the iframe
                             if (pdfPreview.contentWindow) {
                                 pdfPreview.contentWindow.print();
                             }
                         };
                         
-                        // Set the iframe source to the Google viewer
-                        pdfPreview.src = viewerUrl;
+                        // Set the iframe source to the direct PDF link.
+                        pdfPreview.src = directUrl;
 
                     } else {
                         console.error("Error: Tag number is missing from the URL.");
