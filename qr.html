@@ -126,6 +126,7 @@
 
             const fileUrlTemplate = "https://firebasestorage.googleapis.com/v0/b/legacy-hose.firebasestorage.app/o/invoices%2F{TAG}?alt=media&token=ab4cd758-f4ec-4a77-bbdf-29706745019e";
             const fallbackUrl = "https://legacycertificates.com/";
+            const errorTimeout = 4000; 
 
             function showErrorModal(message) {
                 loadingContainer.style.display = 'none';
@@ -135,10 +136,9 @@
                 errorModal.style.display = 'flex';
             }
             
-            function showPreview(url) {
+            function showPreview() {
                 loadingContainer.style.display = 'none';
                 previewContainer.style.display = 'flex';
-                pdfPreview.src = url;
             }
 
             function handleRequest() {
@@ -149,33 +149,27 @@
                     if (tag) {
                         const directUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
                         
-                        // Use a hidden image to reliably check if the file exists.
-                        const checker = new Image();
-                        
-                        // If the file exists, the image's 'onload' will fire.
-                        checker.onload = function() {
-                            showPreview(directUrl);
-                        };
-                        
-                        // If the file does not exist (404), the 'onerror' will fire.
-                        checker.onerror = function() {
-                            console.error(`File not found for tag '${tag}'.`);
+                        let fallbackTimer = setTimeout(() => {
                             showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
+                        }, errorTimeout);
+
+                        pdfPreview.onload = () => {
+                            clearTimeout(fallbackTimer);
+                            showPreview();
                         };
                         
                         certificateTitle.textContent = `Tag#: ${tag}`;
                         downloadButton.href = directUrl;
+                        downloadButton.setAttribute('download', `Certificate-${tag}.pdf`);
                         printButton.onclick = () => {
                             if (pdfPreview.contentWindow) {
                                 pdfPreview.contentWindow.print();
                             }
                         };
                         
-                        // Start the check by setting the image source.
-                        checker.src = directUrl;
+                        pdfPreview.src = directUrl;
 
                     } else {
-                        console.error("Error: Tag number is missing from the URL.");
                         showErrorModal("The certificate link is invalid. You will be redirected to the main page.");
                     }
                 } catch (error) {
