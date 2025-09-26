@@ -129,7 +129,6 @@
             const fallbackUrl = "https://legacycertificates.com/";
 
             function showErrorModal(message) {
-                // Ensure we don't show the modal if the preview is already visible
                 if (previewContainer.style.display === 'flex') return;
                 
                 loadingContainer.style.display = 'none';
@@ -155,20 +154,16 @@
                         downloadButton.href = directUrl;
                         downloadButton.setAttribute('download', `Certificate-${tag}.pdf`);
                         
-                        // Set a timer that will assume an error if the PDF doesn't load in time.
                         const fallbackTimer = setTimeout(() => {
                             showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
-                        }, 5000); // 5-second timeout
+                        }, 5000); 
 
                         const pdfObject = document.createElement('object');
-                        pdfObject.setAttribute('data', directUrl);
                         pdfObject.setAttribute('type', 'application/pdf');
                         pdfObject.style.width = '100%';
                         pdfObject.style.height = '100%';
 
-                        // If the PDF loads successfully, this event will fire.
                         pdfObject.onload = () => {
-                            // Cancel the error timer and show the preview.
                             clearTimeout(fallbackTimer);
                             showPreview();
                         };
@@ -179,6 +174,9 @@
                         
                         pdfObjectContainer.innerHTML = '';
                         pdfObjectContainer.appendChild(pdfObject);
+                        
+                        // Set the data attribute *after* appending and adding the listener
+                        pdfObject.setAttribute('data', directUrl);
 
                         printButton.onclick = () => {
                            try {
