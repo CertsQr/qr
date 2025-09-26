@@ -62,7 +62,6 @@
         .actions button:hover, .actions a:hover {
             background-color: #0056b3;
         }
-        /* The container for the PDF object */
         #pdfObjectContainer {
             width: 100%;
             height: 100%;
@@ -115,6 +114,7 @@
 
     <script>
         window.onload = function() {
+            // --- Element Selection ---
             const loadingContainer = document.getElementById('loadingContainer');
             const previewContainer = document.getElementById('previewContainer');
             const pdfObjectContainer = document.getElementById('pdfObjectContainer');
@@ -125,13 +125,14 @@
             const modalMessage = document.getElementById('modalMessage');
             const modalOkButton = document.getElementById('modalOkButton');
 
+            // --- Configuration ---
             const fileUrlTemplate = "https://firebasestorage.googleapis.com/v0/b/legacy-hose.firebasestorage.app/o/invoices%2F{TAG}?alt=media&token=ab4cd758-f4ec-4a77-bbdf-29706745019e";
             const fallbackUrl = "https://legacycertificates.com/";
 
+            // --- UI Functions ---
             function showErrorModal(message) {
-                if (previewContainer.style.display === 'flex') return;
-                
                 loadingContainer.style.display = 'none';
+                previewContainer.style.display = 'none';
                 modalMessage.textContent = message;
                 modalOkButton.onclick = () => { window.location.href = fallbackUrl; };
                 errorModal.style.display = 'flex';
@@ -142,31 +143,33 @@
                 previewContainer.style.display = 'flex';
             }
 
-            function handleRequest() {
+            // --- Main Logic ---
+            async function handleRequest() {
                 try {
                     const params = new URLSearchParams(window.location.search);
                     const tag = params.get('tag');
 
-                    if (tag) {
-                        const directUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
-                        
+                    if (!tag) {
+                        showErrorModal("The certificate link is invalid. You will be redirected to the main page.");
+                        return;
+                    }
+
+                    const directUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
+                    
+                    // Await the fetch request to check if the PDF exists and is accessible.
+                    const response = await fetch(directUrl);
+
+                    // Check if the response was successful (e.g., HTTP 200 OK).
+                    if (response.ok) {
                         certificateTitle.textContent = `Tag#: ${tag}`;
                         downloadButton.href = directUrl;
                         downloadButton.setAttribute('download', `Certificate-${tag}.pdf`);
                         
-                        const fallbackTimer = setTimeout(() => {
-                            showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
-                        }, 5000); 
-
                         const pdfObject = document.createElement('object');
                         pdfObject.setAttribute('type', 'application/pdf');
+                        pdfObject.setAttribute('data', directUrl);
                         pdfObject.style.width = '100%';
                         pdfObject.style.height = '100%';
-
-                        pdfObject.onload = () => {
-                            clearTimeout(fallbackTimer);
-                            showPreview();
-                        };
                         
                         const fallbackP = document.createElement('p');
                         fallbackP.textContent = 'Your browser does not support PDF previews. Please use the download button.';
@@ -174,9 +177,8 @@
                         
                         pdfObjectContainer.innerHTML = '';
                         pdfObjectContainer.appendChild(pdfObject);
-                        
-                        // Set the data attribute *after* appending and adding the listener
-                        pdfObject.setAttribute('data', directUrl);
+
+                        showPreview();
 
                         printButton.onclick = () => {
                            try {
@@ -187,18 +189,23 @@
                                 printFrame.onload = () => {
                                     printFrame.contentWindow.focus();
                                     printFrame.contentWindow.print();
+                                    // Clean up the iframe after a short delay
                                     setTimeout(() => { document.body.removeChild(printFrame); }, 1000);
                                 };
-                            } catch (e) {
+                           } catch (e) {
                                 console.error("Printing failed:", e);
-                                alert("Could not open print dialog. Please try the download button.");
-                            }
+                                // Avoid using alert() as it can be blocked. A modal would be better, but this is a simple fix.
+                                modalMessage.textContent = "Could not open print dialog. Please use the download button.";
+                                errorModal.style.display = 'flex';
+                                modalOkButton.onclick = () => { errorModal.style.display = 'none'; };
+                           }
                         };
-
                     } else {
-                        showErrorModal("The certificate link is invalid. You will be redirected to the main page.");
+                        // If response.ok is false, the file was not found (404) or there was another server error.
+                        showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
                     }
                 } catch (error) {
+                    // This catches network errors (e.g., CORS, no internet).
                     console.error("An unexpected error occurred:", error);
                     showErrorModal("An error occurred while trying to find your certificate. You will be redirected to the main page.");
                 }
@@ -209,4 +216,3 @@
     </script>
 </body>
 </html>
-
