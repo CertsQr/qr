@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Certificate Viewer</title>
+    <title>Certificate Validator</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -14,7 +14,6 @@
             margin: 0;
             background-color: #f4f4f9;
             color: #333;
-            overflow: hidden;
         }
         .container {
             text-align: center;
@@ -25,194 +24,86 @@
             width: 90%;
             max-width: 400px;
         }
-        #previewContainer {
-            display: none;
-            flex-direction: column;
-            width: 100%;
-            height: 100%;
-            background-color: #525659;
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
         }
-        header {
-            background-color: #fff;
-            padding: 10px 20px;
-            border-bottom: 1px solid #ddd;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-shrink: 0;
+        p {
+            font-size: 1rem;
+            color: #666;
         }
-        header h1 {
-            margin: 0;
-            font-size: 1.2rem;
-            color: #333;
-        }
-        .actions button, .actions a {
-            text-decoration: none;
-            display: inline-block;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            background-color: #007bff;
-            color: white;
-            cursor: pointer;
-            font-size: 0.9rem;
-            margin-left: 10px;
-            transition: background-color 0.2s;
-        }
-        .actions button:hover, .actions a:hover {
-            background-color: #0056b3;
-        }
-        #pdfObjectContainer {
-            width: 100%;
-            height: 100%;
-            border: none;
-            flex-grow: 1;
-        }
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background-color: rgba(0,0,0,0.5); display: none;
-            justify-content: center; align-items: center; z-index: 1000;
-        }
-        .modal-content {
-            background-color: white; padding: 2rem 2.5rem; border-radius: 12px;
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2); text-align: center;
-            max-width: 90%; width: 380px;
-        }
-        .modal-content p {
-            margin-top: 0; margin-bottom: 1.5rem; font-size: 1.1rem; line-height: 1.6;
-        }
-        .modal-content button {
-            width: 100%; padding: 12px; border-radius: 6px; border: none;
-            background-color: #007bff; color: white; cursor: pointer;
-            font-size: 1rem; transition: background-color 0.2s;
-        }
-        .modal-content button:hover { background-color: #0056b3; }
     </style>
 </head>
 <body>
-    <div class="container" id="loadingContainer">
-        <h1 id="message">Finding your certificate...</h1>
-    </div>
-
-    <div id="previewContainer">
-        <header>
-            <h1 id="certificateTitle">Certificate</h1>
-            <div class="actions">
-                <button id="printButton">Print</button>
-                <a id="downloadButton" href="#" download>Download</a>
-            </div>
-        </header>
-        <div id="pdfObjectContainer"></div>
-    </div>
-
-    <div id="errorModal" class="modal-overlay">
-        <div class="modal-content">
-            <p id="modalMessage"></p>
-            <button id="modalOkButton">OK</button>
-        </div>
+    <div class="container">
+        <h1>Validating Link...</h1>
+        <p>Please wait while we find your certificate.</p>
     </div>
 
     <script>
-        window.onload = function() {
-            // --- Element Selection ---
-            const loadingContainer = document.getElementById('loadingContainer');
-            const previewContainer = document.getElementById('previewContainer');
-            const pdfObjectContainer = document.getElementById('pdfObjectContainer');
-            const certificateTitle = document.getElementById('certificateTitle');
-            const printButton = document.getElementById('printButton');
-            const downloadButton = document.getElementById('downloadButton');
-            const errorModal = document.getElementById('errorModal');
-            const modalMessage = document.getElementById('modalMessage');
-            const modalOkButton = document.getElementById('modalOkButton');
-
-            // --- Configuration ---
+        window.onload = async function() {
+            // --- CONFIGURATION ---
             const fileUrlTemplate = "https://firebasestorage.googleapis.com/v0/b/legacy-hose.firebasestorage.app/o/invoices%2F{TAG}?alt=media&token=ab4cd758-f4ec-4a77-bbdf-29706745019e";
             const fallbackUrl = "https://legacycertificates.com/";
 
-            // --- UI Functions ---
-            function showErrorModal(message) {
-                loadingContainer.style.display = 'none';
-                previewContainer.style.display = 'none';
-                modalMessage.textContent = message;
-                modalOkButton.onclick = () => { window.location.href = fallbackUrl; };
-                errorModal.style.display = 'flex';
-            }
-            
-            function showPreview() {
-                loadingContainer.style.display = 'none';
-                previewContainer.style.display = 'flex';
+            // Check for a redirect loop using sessionStorage.
+            // sessionStorage persists for the duration of the page session.
+            if (sessionStorage.getItem('redirect_in_progress')) {
+                console.error("Redirect loop detected. Halting further redirects.");
+                // Clear the flag so a manual refresh by the user can work correctly.
+                sessionStorage.removeItem('redirect_in_progress');
+                
+                // Update the UI to inform the user of the issue.
+                const h1 = document.querySelector('.container h1');
+                const p = document.querySelector('.container p');
+                if (h1) h1.textContent = 'Link Invalid';
+                if (p) p.textContent = 'The certificate link is invalid or could not be found. Please double-check the URL.';
+                
+                return; // Stop the script to prevent another redirect.
             }
 
-            // --- Main Logic ---
-            async function handleRequest() {
+            /**
+             * This function validates the certificate URL and redirects the user.
+             */
+            async function validateAndRedirect() {
                 try {
                     const params = new URLSearchParams(window.location.search);
                     const tag = params.get('tag');
 
                     if (!tag) {
-                        showErrorModal("The certificate link is invalid. You will be redirected to the main page.");
+                        console.error("No tag found in URL. Redirecting to fallback.");
+                        // Set a flag in sessionStorage before redirecting.
+                        sessionStorage.setItem('redirect_in_progress', 'true');
+                        window.location.replace(fallbackUrl);
                         return;
                     }
 
                     const directUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
-                    
-                    // Await the fetch request to check if the PDF exists and is accessible.
-                    const response = await fetch(directUrl);
+                    const response = await fetch(directUrl, { method: 'HEAD' });
 
-                    // Check if the response was successful (e.g., HTTP 200 OK).
                     if (response.ok) {
-                        certificateTitle.textContent = `Tag#: ${tag}`;
-                        downloadButton.href = directUrl;
-                        downloadButton.setAttribute('download', `Certificate-${tag}.pdf`);
-                        
-                        const pdfObject = document.createElement('object');
-                        pdfObject.setAttribute('type', 'application/pdf');
-                        pdfObject.setAttribute('data', directUrl);
-                        pdfObject.style.width = '100%';
-                        pdfObject.style.height = '100%';
-                        
-                        const fallbackP = document.createElement('p');
-                        fallbackP.textContent = 'Your browser does not support PDF previews. Please use the download button.';
-                        pdfObject.appendChild(fallbackP);
-                        
-                        pdfObjectContainer.innerHTML = '';
-                        pdfObjectContainer.appendChild(pdfObject);
-
-                        showPreview();
-
-                        printButton.onclick = () => {
-                           try {
-                                const printFrame = document.createElement('iframe');
-                                printFrame.style.display = 'none';
-                                printFrame.src = directUrl;
-                                document.body.appendChild(printFrame);
-                                printFrame.onload = () => {
-                                    printFrame.contentWindow.focus();
-                                    printFrame.contentWindow.print();
-                                    // Clean up the iframe after a short delay
-                                    setTimeout(() => { document.body.removeChild(printFrame); }, 1000);
-                                };
-                           } catch (e) {
-                                console.error("Printing failed:", e);
-                                // Avoid using alert() as it can be blocked. A modal would be better, but this is a simple fix.
-                                modalMessage.textContent = "Could not open print dialog. Please use the download button.";
-                                errorModal.style.display = 'flex';
-                                modalOkButton.onclick = () => { errorModal.style.display = 'none'; };
-                           }
-                        };
+                        console.log("File found. Redirecting to:", directUrl);
+                        // Set the flag before redirecting to the valid file.
+                        sessionStorage.setItem('redirect_in_progress', 'true');
+                        window.location.replace(directUrl);
                     } else {
-                        // If response.ok is false, the file was not found (404) or there was another server error.
-                        showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
+                        console.error(`File not found (Status: ${response.status}). Redirecting to fallback.`);
+                        // Set the flag before redirecting to the fallback.
+                        sessionStorage.setItem('redirect_in_progress', 'true');
+                        window.location.replace(fallbackUrl);
                     }
                 } catch (error) {
-                    // This catches network errors (e.g., CORS, no internet).
-                    console.error("An unexpected error occurred:", error);
-                    showErrorModal("An error occurred while trying to find your certificate. You will be redirected to the main page.");
+                    console.error("A network or other error occurred:", error);
+                    // Set the flag before redirecting on error.
+                    sessionStorage.setItem('redirect_in_progress', 'true');
+                    window.location.replace(fallbackUrl);
                 }
             }
 
-            handleRequest();
+            // Run the validation logic.
+            validateAndRedirect();
         };
     </script>
 </body>
 </html>
+
