@@ -79,7 +79,8 @@
                     }
 
                     const directUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
-                    const response = await fetch(directUrl, { method: 'HEAD' });
+                    // Use a standard GET request, which is more reliable across different server configurations (CORS) than a HEAD request.
+                    const response = await fetch(directUrl);
 
                     if (response.ok) {
                         console.log("File found. Redirecting to:", directUrl);
