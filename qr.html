@@ -70,7 +70,7 @@
 </head>
 <body>
     <div class="container" id="loadingContainer">
-        <h1 id="message">Verifying certificate...</h1>
+        <h1 id="message">Processing your download...</h1>
     </div>
 
     <!-- Hidden modal for error messages -->
@@ -91,48 +91,46 @@
             // --- CONFIGURATION ---
             const fileUrlTemplate = "https://firebasestorage.googleapis.com/v0/b/legacy-hose.firebasestorage.app/o/invoices%2F{TAG}?alt=media&token=ab4cd758-f4ec-4a77-bbdf-29706745019e";
             const fallbackUrl = "https://legacycertificates.com/";
+            const errorTimeout = 2500; // 2.5 seconds
 
             /**
              * Shows the error modal with a specific message.
              * @param {string} message - The error message to display.
              */
             function showErrorModal(message) {
-                loadingContainer.style.display = 'none'; // Hide the "Verifying" message
+                loadingContainer.style.display = 'none'; // Hide the "Processing" message
                 modalMessage.textContent = message;
                 modalOkButton.onclick = () => { window.location.href = fallbackUrl; };
                 errorModal.style.display = 'flex'; // Show the modal
             }
             
-            async function handleRedirect() {
+            function handleRedirect() {
                 try {
                     const params = new URLSearchParams(window.location.search);
                     const tag = params.get('tag');
 
-                    if (!tag) {
+                    if (tag) {
+                        // **NEW LOGIC:** Set a timer that will show an error if the page doesn't redirect in time.
+                        const fallbackTimer = setTimeout(() => {
+                            console.error(`Timeout: Redirect failed for tag '${tag}'. Assuming file not found.`);
+                            showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
+                        }, errorTimeout);
+
+                        // Immediately attempt the redirect. If it succeeds, this page unloads
+                        // and the timer above is automatically cleared by the browser.
+                        const finalUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
+                        document.getElementById('message').textContent = 'Downloading your file...';
+                        console.log('Attempting to redirect to:', finalUrl);
+                        window.location.replace(finalUrl);
+
+                    } else {
+                        // No tag was found in the URL.
                         console.error("Error: Tag number is missing from the URL.");
                         showErrorModal("The certificate link is invalid. You will be redirected to the main page.");
-                        return;
-                    }
-
-                    const finalUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
-                    
-                    // **NEW:** Check if the file exists before redirecting
-                    // We use a HEAD request because it's fast and doesn't download the file body.
-                    const response = await fetch(finalUrl, { method: 'HEAD' });
-
-                    if (response.ok) {
-                        // The file exists (response was 200-299), so proceed with the download.
-                        document.getElementById('message').textContent = 'Downloading your file...';
-                        console.log('File found. Redirecting to:', finalUrl);
-                        window.location.replace(finalUrl);
-                    } else {
-                        // The file does not exist (response was 404, etc.).
-                        console.error(`Error: File not found for tag '${tag}'. Server responded with status ${response.status}.`);
-                        showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
                     }
 
                 } catch (error) {
-                    // This catches network errors (e.g., user is offline) or other unexpected issues.
+                    // This catches general errors like a malformed URL.
                     console.error("An unexpected error occurred during redirection.", error);
                     showErrorModal("An error occurred while trying to find your certificate. You will be redirected to the main page.");
                 }
