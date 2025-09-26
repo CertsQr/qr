@@ -93,6 +93,12 @@
             const fallbackUrl = "https://legacycertificates.com/";
             const errorTimeout = 2500; // 2.5 seconds
 
+            let isNavigatingAway = false;
+            // Listen for the 'pagehide' event, which reliably fires when the browser navigates away.
+            window.addEventListener('pagehide', () => {
+                isNavigatingAway = true;
+            });
+
             /**
              * Shows the error modal with a specific message.
              * @param {string} message - The error message to display.
@@ -110,27 +116,25 @@
                     const tag = params.get('tag');
 
                     if (tag) {
-                        // **NEW LOGIC:** Set a timer that will show an error if the page doesn't redirect in time.
                         const fallbackTimer = setTimeout(() => {
-                            console.error(`Timeout: Redirect failed for tag '${tag}'. Assuming file not found.`);
-                            showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
+                            // **FIX:** Only show the error if the 'pagehide' event has NOT fired.
+                            if (!isNavigatingAway) {
+                                console.error(`Timeout: Redirect failed for tag '${tag}'. Assuming file not found.`);
+                                showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
+                            }
                         }, errorTimeout);
 
-                        // Immediately attempt the redirect. If it succeeds, this page unloads
-                        // and the timer above is automatically cleared by the browser.
                         const finalUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
                         document.getElementById('message').textContent = 'Downloading your file...';
                         console.log('Attempting to redirect to:', finalUrl);
                         window.location.replace(finalUrl);
 
                     } else {
-                        // No tag was found in the URL.
                         console.error("Error: Tag number is missing from the URL.");
                         showErrorModal("The certificate link is invalid. You will be redirected to the main page.");
                     }
 
                 } catch (error) {
-                    // This catches general errors like a malformed URL.
                     console.error("An unexpected error occurred during redirection.", error);
                     showErrorModal("An error occurred while trying to find your certificate. You will be redirected to the main page.");
                 }
