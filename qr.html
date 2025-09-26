@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Certificate Downloader</title>
+    <title>Certificate Viewer</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -14,6 +14,7 @@
             margin: 0;
             background-color: #f4f4f9;
             color: #333;
+            overflow: hidden; /* Prevent scrolling on the main page */
         }
         .container {
             text-align: center;
@@ -24,56 +25,86 @@
             width: 90%;
             max-width: 400px;
         }
-        /* Styles for the custom modal */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
+        #previewContainer {
+            display: none; /* Hidden by default */
+            flex-direction: column;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            display: none; /* Initially hidden */
-            justify-content: center;
+            background-color: #525659;
+        }
+        header {
+            background-color: #fff;
+            padding: 10px 20px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
             align-items: center;
-            z-index: 1000;
+            flex-shrink: 0;
         }
-        .modal-content {
-            background-color: white;
-            padding: 2rem 2.5rem;
-            border-radius: 12px;
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
-            text-align: center;
-            max-width: 90%;
-            width: 380px;
+        header h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #333;
         }
-        .modal-content p {
-            margin-top: 0;
-            margin-bottom: 1.5rem;
-            font-size: 1.1rem;
-            line-height: 1.6;
-        }
-        .modal-content button {
-            width: 100%;
-            padding: 12px;
-            border-radius: 6px;
+        .actions button, .actions a {
+            text-decoration: none;
+            display: inline-block;
+            padding: 8px 16px;
             border: none;
+            border-radius: 6px;
             background-color: #007bff;
             color: white;
             cursor: pointer;
-            font-size: 1rem;
+            font-size: 0.9rem;
+            margin-left: 10px;
             transition: background-color 0.2s;
         }
-        .modal-content button:hover {
+        .actions button:hover, .actions a:hover {
             background-color: #0056b3;
         }
+        #pdfPreview {
+            width: 100%;
+            height: 100%;
+            border: none;
+            flex-grow: 1;
+        }
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5); display: none;
+            justify-content: center; align-items: center; z-index: 1000;
+        }
+        .modal-content {
+            background-color: white; padding: 2rem 2.5rem; border-radius: 12px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2); text-align: center;
+            max-width: 90%; width: 380px;
+        }
+        .modal-content p {
+            margin-top: 0; margin-bottom: 1.5rem; font-size: 1.1rem; line-height: 1.6;
+        }
+        .modal-content button {
+            width: 100%; padding: 12px; border-radius: 6px; border: none;
+            background-color: #007bff; color: white; cursor: pointer;
+            font-size: 1rem; transition: background-color 0.2s;
+        }
+        .modal-content button:hover { background-color: #0056b3; }
     </style>
 </head>
 <body>
     <div class="container" id="loadingContainer">
-        <h1 id="message">Processing your download...</h1>
+        <h1 id="message">Finding your certificate...</h1>
     </div>
 
-    <!-- Hidden modal for error messages -->
+    <div id="previewContainer">
+        <header>
+            <h1 id="certificateTitle">Certificate</h1>
+            <div class="actions">
+                <button id="printButton">Print</button>
+                <a id="downloadButton" href="#" download>Download</a>
+            </div>
+        </header>
+        <iframe id="pdfPreview" title="Certificate Preview"></iframe>
+    </div>
+
     <div id="errorModal" class="modal-overlay">
         <div class="modal-content">
             <p id="modalMessage"></p>
@@ -84,30 +115,25 @@
     <script>
         window.onload = function() {
             const loadingContainer = document.getElementById('loadingContainer');
+            const previewContainer = document.getElementById('previewContainer');
+            const pdfPreview = document.getElementById('pdfPreview');
+            const certificateTitle = document.getElementById('certificateTitle');
+            const printButton = document.getElementById('printButton');
+            const downloadButton = document.getElementById('downloadButton');
             const errorModal = document.getElementById('errorModal');
             const modalMessage = document.getElementById('modalMessage');
             const modalOkButton = document.getElementById('modalOkButton');
 
-            // --- CONFIGURATION ---
             const fileUrlTemplate = "https://firebasestorage.googleapis.com/v0/b/legacy-hose.firebasestorage.app/o/invoices%2F{TAG}?alt=media&token=ab4cd758-f4ec-4a77-bbdf-29706745019e";
             const fallbackUrl = "https://legacycertificates.com/";
-            const errorTimeout = 2500; // 2.5 seconds
+            const errorTimeout = 3500; // Increased timeout for slower connections
 
-            let isNavigatingAway = false;
-            // Listen for the 'pagehide' event, which reliably fires when the browser navigates away.
-            window.addEventListener('pagehide', () => {
-                isNavigatingAway = true;
-            });
-
-            /**
-             * Shows the error modal with a specific message.
-             * @param {string} message - The error message to display.
-             */
             function showErrorModal(message) {
-                loadingContainer.style.display = 'none'; // Hide the "Processing" message
+                loadingContainer.style.display = 'none';
+                previewContainer.style.display = 'none';
                 modalMessage.textContent = message;
                 modalOkButton.onclick = () => { window.location.href = fallbackUrl; };
-                errorModal.style.display = 'flex'; // Show the modal
+                errorModal.style.display = 'flex';
             }
             
             function handleRedirect() {
@@ -116,26 +142,39 @@
                     const tag = params.get('tag');
 
                     if (tag) {
+                        const finalUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
+                        let hasLoaded = false;
+
                         const fallbackTimer = setTimeout(() => {
-                            // **FIX:** Only show the error if the 'pagehide' event has NOT fired.
-                            if (!isNavigatingAway) {
-                                console.error(`Timeout: Redirect failed for tag '${tag}'. Assuming file not found.`);
+                            if (!hasLoaded) {
+                                console.error(`Timeout: Could not load PDF for tag '${tag}'.`);
                                 showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
                             }
                         }, errorTimeout);
+                        
+                        pdfPreview.onload = () => {
+                            hasLoaded = true;
+                            clearTimeout(fallbackTimer);
+                            loadingContainer.style.display = 'none';
+                            previewContainer.style.display = 'flex';
+                        };
 
-                        const finalUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
-                        document.getElementById('message').textContent = 'Downloading your file...';
-                        console.log('Attempting to redirect to:', finalUrl);
-                        window.location.replace(finalUrl);
+                        certificateTitle.textContent = `Tag#: ${tag}`;
+                        downloadButton.href = finalUrl;
+                        printButton.onclick = () => {
+                            if (pdfPreview.contentWindow) {
+                                pdfPreview.contentWindow.print();
+                            }
+                        };
+                        
+                        pdfPreview.src = finalUrl;
 
                     } else {
                         console.error("Error: Tag number is missing from the URL.");
                         showErrorModal("The certificate link is invalid. You will be redirected to the main page.");
                     }
-
                 } catch (error) {
-                    console.error("An unexpected error occurred during redirection.", error);
+                    console.error("An unexpected error occurred:", error);
                     showErrorModal("An error occurred while trying to find your certificate. You will be redirected to the main page.");
                 }
             }
