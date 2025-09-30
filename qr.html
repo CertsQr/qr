@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Certificate Viewer</title>
+    <!-- Include PDF.js library from a CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -40,6 +42,7 @@
             justify-content: space-between;
             align-items: center;
             flex-shrink: 0;
+            z-index: 10;
         }
         header h1 {
             margin: 0;
@@ -62,12 +65,42 @@
         .actions button:hover, .actions a:hover {
             background-color: #0056b3;
         }
-        #pdfObjectContainer {
-            width: 100%;
-            height: 100%;
-            border: none;
+        /* Styles for the PDF viewer and navigation */
+        #pdf-viewer {
             flex-grow: 1;
+            overflow: auto; /* Allow scrolling for the PDF content */
+            text-align: center;
+            padding: 10px 0;
         }
+        #pdf-canvas {
+            border: 1px solid black;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        #pdf-nav {
+            background-color: #fff;
+            padding: 8px;
+            text-align: center;
+            border-top: 1px solid #ddd;
+            flex-shrink: 0;
+            z-index: 10;
+        }
+        #pdf-nav button {
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid #007bff;
+            background-color: #fff;
+            color: #007bff;
+            cursor: pointer;
+        }
+        #pdf-nav button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        #pdf-nav span {
+            margin: 0 10px;
+        }
+
+        /* Modal styles remain the same */
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background-color: rgba(0,0,0,0.5); display: none;
@@ -98,11 +131,18 @@
         <header>
             <h1 id="certificateTitle">Certificate</h1>
             <div class="actions">
-                <button id="printButton">Print</button>
                 <a id="downloadButton" href="#" download>Download</a>
             </div>
         </header>
-        <div id="pdfObjectContainer"></div>
+        <!-- Container for the canvas and navigation -->
+        <div id="pdf-viewer">
+            <canvas id="pdf-canvas"></canvas>
+        </div>
+        <div id="pdf-nav">
+            <button id="prev-page">Previous</button>
+            <span>Page: <span id="page-num"></span> / <span id="page-count"></span></span>
+            <button id="next-page">Next</button>
+        </div>
     </div>
 
     <div id="errorModal" class="modal-overlay">
@@ -113,21 +153,34 @@
     </div>
 
     <script>
+        // Set the worker source for PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js`;
+
         window.onload = function() {
             // --- Element Selection ---
             const loadingContainer = document.getElementById('loadingContainer');
             const previewContainer = document.getElementById('previewContainer');
-            const pdfObjectContainer = document.getElementById('pdfObjectContainer');
             const certificateTitle = document.getElementById('certificateTitle');
-            const printButton = document.getElementById('printButton');
             const downloadButton = document.getElementById('downloadButton');
             const errorModal = document.getElementById('errorModal');
             const modalMessage = document.getElementById('modalMessage');
             const modalOkButton = document.getElementById('modalOkButton');
 
+            // --- PDF.js related elements ---
+            const pdfCanvas = document.getElementById('pdf-canvas');
+            const pageNumSpan = document.getElementById('page-num');
+            const pageCountSpan = document.getElementById('page-count');
+            const prevPageBtn = document.getElementById('prev-page');
+            const nextPageBtn = document.getElementById('next-page');
+
             // --- Configuration ---
             const fileUrlTemplate = "https://firebasestorage.googleapis.com/v0/b/legacy-hose.firebasestorage.app/o/invoices%2F{TAG}?alt=media&token=ab4cd758-f4ec-4a77-bbdf-29706745019e";
             const fallbackUrl = "https://legacycertificates.com/";
+            let blobUrl = null; // To hold our temporary blob URL
+
+            // --- PDF.js State ---
+            let pdfDoc = null;
+            let pageNum = 1;
 
             // --- UI Functions ---
             function showErrorModal(message) {
@@ -141,6 +194,33 @@
             function showPreview() {
                 loadingContainer.style.display = 'none';
                 previewContainer.style.display = 'flex';
+            }
+            
+            // --- PDF Rendering Logic ---
+            function renderPage(num) {
+                pdfDoc.getPage(num).then(page => {
+                    const viewport = page.getViewport({ scale: 1.5 });
+                    const context = pdfCanvas.getContext('2d');
+                    pdfCanvas.height = viewport.height;
+                    pdfCanvas.width = viewport.width;
+
+                    const renderContext = {
+                        canvasContext: context,
+                        viewport: viewport
+                    };
+                    page.render(renderContext);
+                });
+                pageNumSpan.textContent = num;
+            }
+
+            function queueRenderPage(num) {
+                if (num <= 0 || num > pdfDoc.numPages) {
+                    return;
+                }
+                pageNum = num;
+                renderPage(num);
+                prevPageBtn.disabled = pageNum <= 1;
+                nextPageBtn.disabled = pageNum >= pdfDoc.numPages;
             }
 
             // --- Main Logic ---
@@ -156,63 +236,51 @@
 
                     const directUrl = fileUrlTemplate.replace('{TAG}', encodeURIComponent(tag));
                     
-                    // Await the fetch request to check if the PDF exists and is accessible.
                     const response = await fetch(directUrl);
 
-                    // Check if the response was successful (e.g., HTTP 200 OK).
                     if (response.ok) {
+                        const blob = await response.blob();
+                        blobUrl = URL.createObjectURL(blob);
+
                         certificateTitle.textContent = `Tag#: ${tag}`;
-                        downloadButton.href = directUrl;
+                        downloadButton.href = blobUrl;
                         downloadButton.setAttribute('download', `Certificate-${tag}.pdf`);
                         
-                        const pdfObject = document.createElement('object');
-                        pdfObject.setAttribute('type', 'application/pdf');
-                        pdfObject.setAttribute('data', directUrl);
-                        pdfObject.style.width = '100%';
-                        pdfObject.style.height = '100%';
-                        
-                        const fallbackP = document.createElement('p');
-                        fallbackP.textContent = 'Your browser does not support PDF previews. Please use the download button.';
-                        pdfObject.appendChild(fallbackP);
-                        
-                        pdfObjectContainer.innerHTML = '';
-                        pdfObjectContainer.appendChild(pdfObject);
+                        // --- Use PDF.js to load and render the document ---
+                        pdfjsLib.getDocument(blobUrl).promise.then(doc => {
+                            pdfDoc = doc;
+                            pageCountSpan.textContent = pdfDoc.numPages;
+                            renderPage(pageNum);
+
+                            // Handle navigation
+                            prevPageBtn.onclick = () => queueRenderPage(pageNum - 1);
+                            nextPageBtn.onclick = () => queueRenderPage(pageNum + 1);
+                            prevPageBtn.disabled = true; // Start on page 1
+                            if (pdfDoc.numPages <= 1) {
+                                nextPageBtn.disabled = true;
+                            }
+                        });
 
                         showPreview();
 
-                        printButton.onclick = () => {
-                           try {
-                                const printFrame = document.createElement('iframe');
-                                printFrame.style.display = 'none';
-                                printFrame.src = directUrl;
-                                document.body.appendChild(printFrame);
-                                printFrame.onload = () => {
-                                    printFrame.contentWindow.focus();
-                                    printFrame.contentWindow.print();
-                                    // Clean up the iframe after a short delay
-                                    setTimeout(() => { document.body.removeChild(printFrame); }, 1000);
-                                };
-                           } catch (e) {
-                                console.error("Printing failed:", e);
-                                // Avoid using alert() as it can be blocked. A modal would be better, but this is a simple fix.
-                                modalMessage.textContent = "Could not open print dialog. Please use the download button.";
-                                errorModal.style.display = 'flex';
-                                modalOkButton.onclick = () => { errorModal.style.display = 'none'; };
-                           }
-                        };
                     } else {
-                        // If response.ok is false, the file was not found (404) or there was another server error.
                         showErrorModal("The certificate for this tag could not be found. You will be redirected to the main page.");
                     }
                 } catch (error) {
-                    // This catches network errors (e.g., CORS, no internet).
                     console.error("An unexpected error occurred:", error);
                     showErrorModal("An error occurred while trying to find your certificate. You will be redirected to the main page.");
                 }
             }
 
             handleRequest();
+
+            window.onunload = () => {
+                if (blobUrl) {
+                    URL.revokeObjectURL(blobUrl);
+                }
+            };
         };
     </script>
 </body>
 </html>
+
